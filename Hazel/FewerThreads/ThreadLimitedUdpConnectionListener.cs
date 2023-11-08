@@ -17,6 +17,7 @@ namespace Hazel.Udp.FewerThreads
         {
             public ByteSpan Span;
             public IPEndPoint Recipient;
+            public Action OnTooBig;
         }
 
         private struct ReceiveMessageInfo
@@ -248,7 +249,14 @@ namespace Hazel.Udp.FewerThreads
                 {
                     if (this.socket.Poll(Timeout.Infinite, SelectMode.SelectWrite))
                     {
-                        this.socket.SendTo(msg.Span.GetUnderlyingArray(), msg.Span.Offset, msg.Span.Length, SocketFlags.None, msg.Recipient);
+                        try
+                        {
+                            this.socket.SendTo(msg.Span.GetUnderlyingArray(), msg.Span.Offset, msg.Span.Length, SocketFlags.None, msg.Recipient);
+                        }
+                        catch
+                        {
+                            msg.OnTooBig();
+                        }
                         this.Statistics.AddBytesSent(msg.Span.Length - msg.Span.Offset);
                     }
                     else
@@ -334,14 +342,14 @@ namespace Hazel.Udp.FewerThreads
             connection.HandleReceive(message, bytesReceived);
         }
 
-        internal void SendDataRaw(byte[] response, IPEndPoint remoteEndPoint)
+        internal void SendDataRaw(byte[] response, IPEndPoint remoteEndPoint, Action onTooBig = null)
         {
-            QueueRawData(response, remoteEndPoint);
+            QueueRawData(response, remoteEndPoint, onTooBig);
         }
 
-        protected virtual void QueueRawData(ByteSpan span, IPEndPoint remoteEndPoint)
+        protected virtual void QueueRawData(ByteSpan span, IPEndPoint remoteEndPoint, Action onTooBig = null)
         {
-            this.sendQueue.TryAdd(new SendMessageInfo() { Span = span, Recipient = remoteEndPoint });
+            this.sendQueue.TryAdd(new SendMessageInfo() { Span = span, Recipient = remoteEndPoint, OnTooBig = onTooBig });
         }
 
         /// <summary>

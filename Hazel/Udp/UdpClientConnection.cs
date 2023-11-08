@@ -73,21 +73,21 @@ namespace Hazel.Udp
         }
 
         /// <inheritdoc />
-        protected override void WriteBytesToConnection(byte[] bytes, int length)
+        protected override void WriteBytesToConnection(byte[] bytes, int length, Action onTooBig = null)
         {
 #if DEBUG
             if (TestLagMs > 0)
             {
-                ThreadPool.QueueUserWorkItem(a => { Thread.Sleep(this.TestLagMs); WriteBytesToConnectionReal(bytes, length); });
+                ThreadPool.QueueUserWorkItem(a => { Thread.Sleep(this.TestLagMs); WriteBytesToConnectionReal(bytes, length, onTooBig); });
             }
             else
 #endif
             {
-                WriteBytesToConnectionReal(bytes, length);
+                WriteBytesToConnectionReal(bytes, length, onTooBig);
             }
         }
 
-        private void WriteBytesToConnectionReal(byte[] bytes, int length)
+        private void WriteBytesToConnectionReal(byte[] bytes, int length, Action onTooBig)
         {
 #if DEBUG
             DataSentRaw?.Invoke(bytes, length);
@@ -110,6 +110,10 @@ namespace Hazel.Udp
             {
                 // Already disposed and disconnected...
             }
+            catch (SocketException e) when (onTooBig != null && e.SocketErrorCode == SocketError.MessageSize)
+            {
+                onTooBig();
+            }
             catch (SocketException ex)
             {
                 DisconnectInternal(HazelInternalErrors.SocketExceptionSend, "Could not send data as a SocketException occurred: " + ex.Message);
@@ -126,6 +130,10 @@ namespace Hazel.Udp
             catch (ObjectDisposedException)
             {
                 // Already disposed and disconnected...
+            }
+            catch (SocketException e) when (e.SocketErrorCode == SocketError.MessageSize)
+            {
+                throw;
             }
             catch (SocketException ex)
             {
@@ -190,6 +198,7 @@ namespace Hazel.Udp
             {
                 this.State = ConnectionState.Connected;
                 this.InitializeKeepAliveTimer();
+                this.StartMtuDiscovery();
             });
         }
 

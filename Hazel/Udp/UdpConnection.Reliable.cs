@@ -209,7 +209,7 @@ namespace Hazel.Udp
         /// <param name="buffer">The buffer to attach to.</param>
         /// <param name="offset">The offset to attach at.</param>
         /// <param name="ackCallback">The callback to make once the packet has been acknowledged.</param>
-        protected void AttachReliableID(byte[] buffer, int offset, Action ackCallback = null)
+        protected ushort AttachReliableID(byte[] buffer, int offset, Action ackCallback = null)
         {
             ushort id = (ushort)Interlocked.Increment(ref lastIDAllocated);
 
@@ -234,6 +234,8 @@ namespace Hazel.Udp
             {
                 throw new Exception("That shouldn't be possible");
             }
+
+            return id;
         }
 
         public static int ClampToInt(float value, int min, int max)
@@ -251,6 +253,12 @@ namespace Hazel.Udp
         /// <param name="ackCallback">The callback to make once the packet has been acknowledged.</param>
         private void ReliableSend(byte sendOption, byte[] data, Action ackCallback = null)
         {
+            if (data.Length >= Mtu)
+            {
+                FragmentedSend(sendOption, data, ackCallback);
+                return;
+            }
+
             //Inform keepalive not to send for a while
             ResetKeepAliveTimer();
 
@@ -412,7 +420,7 @@ namespace Hazel.Udp
             Statistics.LogAcknowledgementReceive(bytesReceived);
         }
 
-        private void AcknowledgeMessageId(ushort id)
+        protected void AcknowledgeMessageId(ushort id)
         {
             // Dispose of timer and remove from dictionary
             if (reliableDataPacketsSent.TryRemove(id, out Packet packet))
